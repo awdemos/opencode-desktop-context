@@ -1,0 +1,80 @@
+import { z } from "zod";
+export declare const captureTargetSchema: z.ZodEnum<["fullScreen", "activeWindow", "allDisplays"]>;
+export declare const retentionSchema: z.ZodEnum<["memory", "temp", "persistent"]>;
+export declare const configSchema: z.ZodEffects<z.ZodObject<{
+    captureTarget: z.ZodDefault<z.ZodEnum<["fullScreen", "activeWindow", "allDisplays"]>>;
+    maxAgeMs: z.ZodDefault<z.ZodNumber>;
+    autoAttach: z.ZodDefault<z.ZodBoolean>;
+    systemHint: z.ZodDefault<z.ZodBoolean>;
+    visualIndicator: z.ZodDefault<z.ZodBoolean>;
+    retention: z.ZodDefault<z.ZodEnum<["memory", "temp", "persistent"]>>;
+    retentionTtlMs: z.ZodDefault<z.ZodNumber>;
+    persistentDir: z.ZodOptional<z.ZodString>;
+    blocklist: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    allowlist: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    quality: z.ZodDefault<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    captureTarget: "fullScreen" | "activeWindow" | "allDisplays";
+    maxAgeMs: number;
+    autoAttach: boolean;
+    systemHint: boolean;
+    visualIndicator: boolean;
+    retention: "memory" | "temp" | "persistent";
+    retentionTtlMs: number;
+    blocklist: string[];
+    allowlist: string[];
+    quality: number;
+    persistentDir?: string | undefined;
+}, {
+    captureTarget?: "fullScreen" | "activeWindow" | "allDisplays" | undefined;
+    maxAgeMs?: number | undefined;
+    autoAttach?: boolean | undefined;
+    systemHint?: boolean | undefined;
+    visualIndicator?: boolean | undefined;
+    retention?: "memory" | "temp" | "persistent" | undefined;
+    retentionTtlMs?: number | undefined;
+    persistentDir?: string | undefined;
+    blocklist?: string[] | undefined;
+    allowlist?: string[] | undefined;
+    quality?: number | undefined;
+}>, {
+    captureTarget: "fullScreen" | "activeWindow" | "allDisplays";
+    maxAgeMs: number;
+    autoAttach: boolean;
+    systemHint: boolean;
+    visualIndicator: boolean;
+    retention: "memory" | "temp" | "persistent";
+    retentionTtlMs: number;
+    blocklist: string[];
+    allowlist: string[];
+    quality: number;
+    persistentDir?: string | undefined;
+}, {
+    captureTarget?: "fullScreen" | "activeWindow" | "allDisplays" | undefined;
+    maxAgeMs?: number | undefined;
+    autoAttach?: boolean | undefined;
+    systemHint?: boolean | undefined;
+    visualIndicator?: boolean | undefined;
+    retention?: "memory" | "temp" | "persistent" | undefined;
+    retentionTtlMs?: number | undefined;
+    persistentDir?: string | undefined;
+    blocklist?: string[] | undefined;
+    allowlist?: string[] | undefined;
+    quality?: number | undefined;
+}>;
+export type Config = z.infer<typeof configSchema>;
+export declare const defaultConfig: {
+    captureTarget: "fullScreen" | "activeWindow" | "allDisplays";
+    maxAgeMs: number;
+    autoAttach: boolean;
+    systemHint: boolean;
+    visualIndicator: boolean;
+    retention: "memory" | "temp" | "persistent";
+    retentionTtlMs: number;
+    blocklist: string[];
+    allowlist: string[];
+    quality: number;
+    persistentDir?: string | undefined;
+};
+export declare function parseConfig(input: unknown): Config;
+//# sourceMappingURL=config.d.ts.map
