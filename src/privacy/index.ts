@@ -27,3 +27,5 @@ export function isAllowedToCapture(ctx: PrivacyContext): boolean {
 
   return true
 }
+
+export * from "./permission.js"
