@@ -6,19 +6,23 @@ export function createChatMessageHook(orchestrator: CaptureOrchestrator, config:
   return async (input, output) => {
     if (!config.autoAttach) return
 
-    const capture = await orchestrator.captureIfAllowed()
-    if (!capture) return
+    try {
+      const capture = await orchestrator.captureIfAllowed()
+      if (!capture) return
 
-    const url = capture.path ? `file://${capture.path}` : `data:image/${capture.format};base64,${capture.buffer.toString("base64")}`
+      const url = capture.path ? `file://${capture.path}` : `data:image/${capture.format};base64,${capture.buffer.toString("base64")}`
 
-    output.parts.push({
-      id: `desktop-${capture.capturedAt}`,
-      sessionID: input.sessionID,
-      messageID: output.message.id,
-      type: "file",
-      mime: capture.format === "png" ? "image/png" : "image/jpeg",
-      url,
-      filename: `desktop-${capture.capturedAt}.${capture.format}`,
-    })
+      output.parts.push({
+        id: `desktop-${capture.capturedAt}`,
+        sessionID: input.sessionID,
+        messageID: output.message.id,
+        type: "file",
+        mime: capture.format === "png" ? "image/png" : "image/jpeg",
+        url,
+        filename: `desktop-${capture.capturedAt}.${capture.format}`,
+      })
+    } catch {
+      // Never let a capture failure break the chat message flow.
+    }
   }
 }

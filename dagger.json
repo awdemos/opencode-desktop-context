@@ -1,0 +1,13 @@
+{
+  "name": "opencode-desktop-context",
+  "sdk": "typescript",
+  "source": "dagger",
+  "engineVersion": "v0.21.7",
+  "include": [
+    "package.json",
+    "bun.lock",
+    "tsconfig.json",
+    "src/**",
+    "tests/**"
+  ]
+}

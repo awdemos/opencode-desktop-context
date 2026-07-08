@@ -6,7 +6,7 @@
 
 ## 1. Overview & Goals
 
-`opencode-desktop-context` is a standalone OpenCode plugin that periodically captures the user's desktop and injects the latest screenshot into the active OpenCode session as context.
+`opencode-desktop-context` is a standalone OpenCode plugin that periodically captures the user's desktop and injects the latest screenshot into the active OpenCode session as context. Screenshots may contain sensitive information and are sent to the configured model provider; prefer local models whenever possible.
 
 ### Core behaviors
 
@@ -118,7 +118,7 @@ Users configure the plugin in `opencode.json`:
 ### Retention policies
 
 - **memory:** Keep only the latest screenshot in a Buffer. If the SDK requires a file path, write temporarily and delete synchronously after attachment.
-- **temp:** Write to `os.tmpdir()/opencode-desktop-context/` with `retentionTtlMs` TTL, cleaned up at session end and on plugin startup.
+- **temp:** Write to `~/Pictures/opencode-desktop-context/` with `retentionTtlMs` TTL, cleaned up at session end and on plugin startup.
 - **persistent:** Write to `persistentDir`. User is responsible for cleanup.
 
 ## 5. Privacy Controls

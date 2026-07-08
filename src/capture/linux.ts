@@ -1,13 +1,8 @@
-import { $ } from "bun"
+import { $, which, readTempFile } from "./shell.js"
 import type { CaptureAdapter, CaptureResult, CaptureTarget, ActiveWindow } from "./types.js"
 
 async function commandExists(cmd: string): Promise<boolean> {
-  try {
-    await $`which ${cmd}`
-    return true
-  } catch {
-    return false
-  }
+  return which(cmd)
 }
 
 async function getWaylandCompositor(): Promise<"hyprland" | "sway" | "niri" | null> {
@@ -25,17 +20,19 @@ async function getActiveWindowWayland(): Promise<ActiveWindow> {
   const compositor = await getWaylandCompositor()
   try {
     if (compositor === "hyprland") {
-      const json = await $`hyprctl activewindow -j`.json()
+      const result = await $`hyprctl activewindow -j`
+      const json = JSON.parse(result.stdout)
       return { appName: json.class ?? "", title: json.title ?? "" }
     }
     if (compositor === "sway") {
-      const json = await $`swaymsg -t get_tree`.json()
+      const result = await $`swaymsg -t get_tree`
+      const json = JSON.parse(result.stdout)
       const focused = findFocused(json)
       return { appName: focused?.app_id ?? "", title: focused?.name ?? "" }
     }
     if (compositor === "niri") {
-      const result = await $`niri msg --json focused-window`.text()
-      const json = JSON.parse(result)
+      const result = await $`niri msg --json focused-window`
+      const json = JSON.parse(result.stdout)
       return { appName: json.app_id ?? "", title: json.title ?? "" }
     }
   } catch {
@@ -64,13 +61,13 @@ function findFocused(node: any): any {
 
 async function getActiveWindowX11(): Promise<ActiveWindow> {
   try {
-    const id = await $`xprop -root _NET_ACTIVE_WINDOW`.text()
-    const match = id.match(/0x[0-9a-fA-F]+/)
+    const id = await $`xprop -root _NET_ACTIVE_WINDOW`
+    const match = id.stdout.match(/0x[0-9a-fA-F]+/)
     if (!match) return { appName: "", title: "" }
     const windowId = match[0]
     const [appName, title] = await Promise.all([
-      $`xprop -id ${windowId} WM_CLASS`.text().catch(() => ""),
-      $`xprop -id ${windowId} _NET_WM_NAME`.text().catch(() => ""),
+      $`xprop -id ${windowId} WM_CLASS`.then(r => r.stdout).catch(() => ""),
+      $`xprop -id ${windowId} _NET_WM_NAME`.then(r => r.stdout).catch(() => ""),
     ])
     return {
       appName: appName.split("").pop()?.replace(/"/g, "").trim() ?? "",
@@ -92,19 +89,38 @@ async function captureWayland(target: CaptureTarget): Promise<Buffer> {
   if (target === "activeWindow") {
     const compositor = await getWaylandCompositor()
     if (compositor === "hyprland") {
-      const json = await $`hyprctl activewindow -j`.json()
+      const result = await $`hyprctl activewindow -j`
+      const json = JSON.parse(result.stdout)
       const box = `${json.at[0]},${json.at[1]} ${json.size[0]}x${json.size[1]}`
       await $`grim -g ${box} ${tmpFile}`
-    } else if (await commandExists("slurp")) {
-      const geometry = await $`slurp`.text()
-      await $`grim -g ${geometry.trim()} ${tmpFile}`
+    } else if (compositor === "sway") {
+      const result = await $`swaymsg -t get_tree`
+      const json = JSON.parse(result.stdout)
+      const focused = findFocused(json)
+      if (focused?.rect) {
+        const { x, y, width, height } = focused.rect
+        const box = `${x},${y} ${width}x${height}`
+        await $`grim -g ${box} ${tmpFile}`
+      } else {
+        await $`grim ${tmpFile}`
+      }
+    } else if (compositor === "niri") {
+      const result = await $`niri msg --json focused-window`
+      const json = JSON.parse(result.stdout)
+      if (json?.geometry) {
+        const { x, y, width, height } = json.geometry
+        const box = `${x},${y} ${width}x${height}`
+        await $`grim -g ${box} ${tmpFile}`
+      } else {
+        await $`grim ${tmpFile}`
+      }
     } else {
       await $`grim ${tmpFile}`
     }
   } else {
     await $`grim ${tmpFile}`
   }
-  return Buffer.from(await Bun.file(tmpFile).arrayBuffer())
+  return readTempFile(tmpFile)
 }
 
 async function captureX11(target: CaptureTarget): Promise<Buffer> {
@@ -112,19 +128,38 @@ async function captureX11(target: CaptureTarget): Promise<Buffer> {
   if (target === "activeWindow") {
     if (await commandExists("import")) {
       await $`import -window $(xprop -root _NET_ACTIVE_WINDOW | grep -o '0x[0-9a-fA-F]*') ${tmpFile}`
-      return Buffer.from(await Bun.file(tmpFile).arrayBuffer())
+      return readTempFile(tmpFile)
     }
   }
   if (await commandExists("import")) {
     await $`import -window root ${tmpFile}`
-    return Buffer.from(await Bun.file(tmpFile).arrayBuffer())
+    return readTempFile(tmpFile)
   }
   const display = process.env.DISPLAY ?? ":0"
   await $`ffmpeg -f x11grab -i ${display} -vframes 1 ${tmpFile}`
-  return Buffer.from(await Bun.file(tmpFile).arrayBuffer())
+  return readTempFile(tmpFile)
+}
+
+type LinuxBackend = "grim" | "import" | "ffmpeg"
+
+async function detectBackend(): Promise<LinuxBackend | null> {
+  const wayland = process.env.WAYLAND_DISPLAY
+  if (wayland) {
+    if (await commandExists("grim")) return "grim"
+    return null
+  }
+  if (await commandExists("import")) return "import"
+  if (await commandExists("ffmpeg")) return "ffmpeg"
+  return null
 }
 
 async function captureLinux(target: CaptureTarget): Promise<Buffer> {
+  const backend = await detectBackend()
+  if (!backend) {
+    throw new Error(
+      "No desktop capture tool found. Install one of: grim (Wayland), ImageMagick import (X11), or ffmpeg (X11)."
+    )
+  }
   const wayland = process.env.WAYLAND_DISPLAY
   if (wayland) return captureWayland(target)
   return captureX11(target)
@@ -140,6 +175,7 @@ export const linuxAdapter: CaptureAdapter = {
     return { buffer, format: "png" }
   },
   async isAvailable() {
-    return process.platform === "linux"
+    if (process.platform !== "linux") return false
+    return (await detectBackend()) !== null
   },
 }

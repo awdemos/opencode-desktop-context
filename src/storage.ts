@@ -1,6 +1,6 @@
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises"
+import { homedir } from "node:os"
 import { join } from "node:path"
-import { tmpdir } from "node:os"
 import type { StoredCapture } from "./capture/types.js"
 
 export type StorageBackend = "memory" | "temp" | "persistent"
@@ -19,8 +19,12 @@ export function createMemoryStorage(): Storage {
   }
 }
 
+export function getTempStorageDir(): string {
+  return join(homedir(), "Pictures", "opencode-desktop-context")
+}
+
 export function createTempStorage(): Storage {
-  const dir = join(tmpdir(), "opencode-desktop-context")
+  const dir = getTempStorageDir()
   return {
     async save(capture) {
       await mkdir(dir, { recursive: true })

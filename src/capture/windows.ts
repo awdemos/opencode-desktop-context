@@ -1,4 +1,4 @@
-import { $ } from "bun"
+import { $, readTempFile } from "./shell.js"
 import type { CaptureAdapter, CaptureResult, CaptureTarget, ActiveWindow } from "./types.js"
 
 async function getActiveWindowInfo(): Promise<ActiveWindow> {
@@ -23,8 +23,8 @@ $processId = 0
 $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
 @($process.ProcessName, $title.ToString()) -join "\n"
 `
-  const result = await $`powershell.exe -NoProfile -Command ${script}`.text()
-  const [appName, title] = result.trim().split("\n")
+  const result = await $`powershell.exe -NoProfile -Command ${script}`
+  const [appName, title] = result.stdout.trim().split("\n")
   return { appName: appName ?? "", title: title ?? "" }
 }
 
@@ -33,21 +33,33 @@ async function captureScreen(target: CaptureTarget): Promise<Buffer> {
   const script = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public class CaptureWin {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+  public struct RECT { public int Left, Top, Right, Bottom; }
+  public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+}
+"@
 $path = "$env:TEMP\\opencode-dc-${Date.now()}.png"
 if (${activeWindow}) {
-  Add-Type @"
-  using System; using System.Runtime.InteropServices; using System.Drawing;
-  public class CaptureWin { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect); [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint nFlags); public struct RECT { public int Left, Top, Right, Bottom; } }
-"@
   $hwnd = [CaptureWin]::GetForegroundWindow()
   $rect = New-Object CaptureWin+RECT
-  [void][CaptureWin]::GetWindowRect($hwnd, [ref]$rect)
+  # DWM bounds are in physical pixels and exclude the drop shadow; fall back to GetWindowRect if DWM fails.
+  $dwmOk = [CaptureWin]::DwmGetWindowAttribute($hwnd, [CaptureWin]::DWMWA_EXTENDED_FRAME_BOUNDS, [ref]$rect, [System.Runtime.InteropServices.Marshal]::SizeOf([CaptureWin+RECT])) -eq 0
+  if (-not $dwmOk) {
+    [void][CaptureWin]::GetWindowRect($hwnd, [ref]$rect)
+  }
   $w = $rect.Right - $rect.Left
   $h = $rect.Bottom - $rect.Top
+  if ($w -le 0 -or $h -le 0) {
+    throw "Unable to determine active window bounds"
+  }
   $bmp = New-Object System.Drawing.Bitmap($w, $h)
   $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-  [void][CaptureWin]::PrintWindow($hwnd, $gfx.GetHdc(), 0)
-  $gfx.ReleaseHdc()
+  $gfx.CopyFromScreen($rect.Left, $rect.Top, 0, 0, New-Object System.Drawing.Size($w, $h))
   $bmp.Save($path)
 } else {
   $screens = [System.Windows.Forms.Screen]::AllScreens
@@ -61,8 +73,8 @@ if (${activeWindow}) {
 }
 [System.Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
 `
-  const result = await $`powershell.exe -NoProfile -Command ${script}`.text()
-  return Buffer.from(result.trim(), "base64")
+  const result = await $`powershell.exe -NoProfile -Command ${script}`
+  return Buffer.from(result.stdout.trim(), "base64")
 }
 
 export const windowsAdapter: CaptureAdapter = {
@@ -75,6 +87,12 @@ export const windowsAdapter: CaptureAdapter = {
     return { buffer, format: "png" }
   },
   async isAvailable() {
-    return process.platform === "win32"
+    if (process.platform !== "win32") return false
+    try {
+      await $`powershell.exe -NoProfile -Command "exit 0"`
+      return true
+    } catch {
+      return false
+    }
   },
 }

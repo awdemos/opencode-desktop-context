@@ -1,0 +1,9 @@
+{
+  "name": "opencode-desktop-context-dagger",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@dagger.io/dagger": "^0.21.7",
+    "typescript": "^5.5.0"
+  }
+}

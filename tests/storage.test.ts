@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
-import { createTempStorage, createPersistentStorage } from "../src/storage"
+import { createTempStorage, createPersistentStorage, getTempStorageDir } from "../src/storage"
 import { rm, readdir } from "node:fs/promises"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-const tmpDir = join(tmpdir(), "opencode-desktop-context-test")
+const tmpDir = getTempStorageDir() + "-test"
 
 describe("storage", () => {
   beforeEach(async () => {
@@ -14,11 +13,12 @@ describe("storage", () => {
     await rm(tmpDir, { recursive: true, force: true })
   })
 
-  it("temp storage saves with path", async () => {
+  it("temp storage saves to Pictures/opencode-desktop-context", async () => {
     const storage = createTempStorage()
     const capture = { buffer: Buffer.from("img"), format: "png" as const, capturedAt: Date.now() }
     const stored = await storage.save(capture)
     expect(stored.path).toBeDefined()
+    expect(stored.path?.startsWith(getTempStorageDir())).toBe(true)
   })
 
   it("persistent storage saves to provided directory", async () => {

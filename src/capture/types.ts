@@ -29,10 +29,10 @@ export type CaptureAdapter = {
 
 export type Platform = "darwin" | "win32" | "linux"
 
-export function getPlatform(): Platform {
+export function getPlatform(): Platform | null {
   const platform = process.platform
   if (platform === "darwin" || platform === "win32" || platform === "linux") {
     return platform
   }
-  throw new Error(`Unsupported platform: ${platform}`)
+  return null
 }

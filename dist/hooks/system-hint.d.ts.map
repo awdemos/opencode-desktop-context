@@ -1,1 +1,0 @@
-{"version":3,"file":"system-hint.d.ts","sourceRoot":"","sources":["../../src/hooks/system-hint.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,KAAK,EAAE,MAAM,qBAAqB,CAAA;AAChD,OAAO,KAAK,EAAE,MAAM,EAAE,MAAM,cAAc,CAAA;AAI1C,wBAAgB,oBAAoB,CAAC,MAAM,EAAE,MAAM,GAAG,KAAK,CAAC,oCAAoC,CAAC,CAKhG"}

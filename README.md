@@ -2,6 +2,12 @@
 
 OpenCode plugin that captures desktop screenshots and adds them to the active session context.
 
+> I thought about Macrohard and whatever the Microsoft version was called and thought that was pretty cool — why not just make my own in OpenCode?
+
+> **Beta warning:** This plugin is early-stage software and may be unstable. Back up your OpenCode configuration before installing it, and consider having another coding assistant or terminal open so you can quickly identify and fix any issues. Pull requests and bug reports are welcome.
+>
+> **Privacy warning:** Desktop screenshots can contain personal, sensitive, or confidential information. Anything captured may be sent to the model provider you have configured. Use this plugin at your own risk. Whenever possible, use a local model (for example, an Ollama model) so screenshots never leave your machine.
+
 ## Installation
 
 Install the plugin from npm and add it to your `opencode.json`:
@@ -52,11 +58,74 @@ npm install opencode-desktop-context
 | `allowlist` | `string[]` | `[]` | If non-empty, only capture when active window matches. |
 | `quality` | `number` | `80` | JPEG quality for attachments (PNG if `100`). |
 
+### Storage locations
+
+- `memory`: the latest screenshot is kept in memory only.
+- `temp`: screenshots are saved to `~/Pictures/opencode-desktop-context/` and cleaned up automatically based on `retentionTtlMs`.
+- `persistent`: screenshots are saved to the directory you set via `persistentDir`.
+
+## Enabling auto-attach
+
+`autoAttach` is `true` by default. When enabled, every user message you send is sent with the latest desktop screenshot attached. Change `autoAttach` to `false` if you only want the model to request a screenshot via the `capture_desktop` tool.
+
+## Privacy
+
 ## Platform Requirements
 
 - **macOS:** `screencapture` (built-in)
 - **Windows:** PowerShell with .NET (built-in)
 - **Linux:** One of `grim` (Wayland), `import` from ImageMagick, or `ffmpeg` (X11)
+
+## Vision-less Models
+
+Some OpenCode models cannot process image attachments. If your model does not support vision, attach a local vision model to read screenshots for you.
+
+### Recommended: Moondream via Ollama
+
+[Moondream](https://moondream.ai) is a small, fast vision model that runs locally through Ollama. It is ideal for describing screens and reading text in screenshots.
+
+**Setup**
+
+1. Install [Ollama](https://ollama.com) if you do not already have it.
+2. Pull the Moondream model:
+
+   ```bash
+   ollama pull moondream:latest
+   ```
+
+3. Send a captured screenshot to the model with the Ollama REST API:
+
+   ```bash
+   python3 - <<'PY'
+   import base64, json, urllib.request
+
+   image_path = "/tmp/opencode-desktop-context/capture-latest.jpeg"
+   image_b64 = base64.b64encode(open(image_path, "rb").read()).decode()
+
+   payload = {
+       "model": "moondream:latest",
+       "prompt": "Describe this screenshot and transcribe any readable text.",
+       "images": [image_b64],
+       "stream": False,
+   }
+
+   req = urllib.request.Request(
+       "http://localhost:11434/api/generate",
+       data=json.dumps(payload).encode(),
+       headers={"Content-Type": "application/json"},
+   )
+
+   resp = urllib.request.urlopen(req)
+   obj = json.loads(resp.read())
+   print(obj["response"])
+   PY
+   ```
+
+**Tips**
+
+- Use the REST API (`/api/generate`) rather than `ollama run < image.jpg`; the CLI can interleave terminal control sequences that corrupt the output.
+- For text-heavy screens, OCR with [Tesseract](https://github.com/tesseract-ocr/tesseract) is usually more accurate than a vision model.
+- Moondream is the recommended default because it is small (~1.6B parameters) and fast. If you need richer descriptions, `llava:latest` or `llava:13b` are stronger but heavier alternatives.
 
 ## Privacy
 
@@ -72,4 +141,8 @@ bun run build
 
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE).
+
+## Disclaimer
+
+This project is an independent community plugin. It is **not affiliated with, endorsed by, or maintained by OpenCode or its makers**. All product names, trademarks, and registered trademarks mentioned in this documentation are the property of their respective owners.

@@ -8,27 +8,34 @@ export function createCaptureDesktopTool(orchestrator: CaptureOrchestrator): Too
       reason: tool.schema.string().optional().describe("Brief reason for capturing the screen"),
     },
     async execute(args, context) {
-      const capture = await orchestrator.captureIfAllowed({ force: true })
-      if (!capture) {
-        return {
-          title: "Desktop capture blocked",
-          output: "Screen capture was blocked by the plugin's privacy settings or permission was not granted.",
+      try {
+        const capture = await orchestrator.captureIfAllowed({ force: true })
+        if (!capture) {
+          return {
+            title: "Desktop capture blocked",
+            output: "Screen capture was blocked by the plugin's privacy settings or permission was not granted.",
+          }
         }
-      }
 
-      const url = capture.path ? `file://${capture.path}` : `data:image/${capture.format};base64,${capture.buffer.toString("base64")}`
+        const url = capture.path ? `file://${capture.path}` : `data:image/${capture.format};base64,${capture.buffer.toString("base64")}`
 
-      return {
-        title: "Desktop captured",
-        output: `Captured desktop at ${new Date(capture.capturedAt).toISOString()}.`,
-        attachments: [
-          {
-            type: "file",
-            mime: capture.format === "png" ? "image/png" : "image/jpeg",
-            url,
-            filename: `desktop-${capture.capturedAt}.${capture.format}`,
-          },
-        ],
+        return {
+          title: "Desktop captured",
+          output: `Captured desktop at ${new Date(capture.capturedAt).toISOString()}.`,
+          attachments: [
+            {
+              type: "file",
+              mime: capture.format === "png" ? "image/png" : "image/jpeg",
+              url,
+              filename: `desktop-${capture.capturedAt}.${capture.format}`,
+            },
+          ],
+        }
+      } catch (err) {
+        return {
+          title: "Desktop capture failed",
+          output: err instanceof Error ? err.message : String(err),
+        }
       }
     },
   })
