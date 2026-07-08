@@ -13,6 +13,13 @@ export type CaptureResult = {
   window?: ActiveWindow
 }
 
+export type StoredCapture = {
+  buffer: Buffer
+  format: "png" | "jpeg"
+  capturedAt: number
+  path?: string
+}
+
 export type CaptureAdapter = {
   name: string
   getActiveWindow(): Promise<ActiveWindow>
