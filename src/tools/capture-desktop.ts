@@ -1,7 +1,7 @@
-import { tool } from "@opencode-ai/plugin"
+import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { CaptureOrchestrator } from "../capture/index.js"
 
-export function createCaptureDesktopTool(orchestrator: CaptureOrchestrator) {
+export function createCaptureDesktopTool(orchestrator: CaptureOrchestrator): ToolDefinition {
   return tool({
     description: "Capture the user's desktop and return it as an image. Use this when you need to see what is currently on the user's screen to answer a question or debug an issue.",
     args: {
