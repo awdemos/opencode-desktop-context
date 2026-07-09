@@ -11,6 +11,7 @@ describe("parseConfig", () => {
     expect(config.visualIndicator).toBe(true)
     expect(config.retention).toBe("temp")
     expect(config.retentionTtlMs).toBe(600000)
+    expect(config.periodicCaptureMs).toBe(300000)
     expect(config.blocklist).toContain("1Password")
     expect(config.allowlist).toEqual([])
     expect(config.quality).toBe(80)
@@ -26,6 +27,7 @@ describe("parseConfig", () => {
       retention: "persistent",
       persistentDir: "/tmp/screenshots",
       retentionTtlMs: 1000,
+      periodicCaptureMs: 60000,
       blocklist: ["SecretApp"],
       allowlist: ["Code"],
       quality: 60,
@@ -38,6 +40,7 @@ describe("parseConfig", () => {
     expect(config.retention).toBe("persistent")
     expect(config.persistentDir).toBe("/tmp/screenshots")
     expect(config.retentionTtlMs).toBe(1000)
+    expect(config.periodicCaptureMs).toBe(60000)
     expect(config.blocklist).toEqual(["SecretApp"])
     expect(config.allowlist).toEqual(["Code"])
     expect(config.quality).toBe(60)
@@ -53,5 +56,9 @@ describe("parseConfig", () => {
 
   it("requires persistentDir when retention is persistent", () => {
     expect(() => parseConfig({ retention: "persistent" })).toThrow()
+  })
+
+  it("rejects negative periodicCaptureMs", () => {
+    expect(() => parseConfig({ periodicCaptureMs: -1 })).toThrow()
   })
 })

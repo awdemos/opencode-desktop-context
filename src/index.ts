@@ -67,6 +67,19 @@ export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
       clearCache: orchestrator.clearCache,
     }
 
+    if (config.periodicCaptureMs > 0) {
+      const interval = setInterval(async () => {
+        try {
+          const perm = await loadPermissionState().catch(() => ({ granted: false }))
+          if (!perm.granted) return
+          await orchestrator.captureIfAllowed({ force: false }).catch((err) => logError(ctx, "Periodic capture failed", err))
+        } catch (err) {
+          logError(ctx, "Periodic capture crashed", err).catch(() => {})
+        }
+      }, config.periodicCaptureMs)
+      interval.unref?.()
+    }
+
     return {
       "chat.message": createChatMessageHook(permissionedOrchestrator, config),
       "experimental.chat.system.transform": createSystemHintHook(config),

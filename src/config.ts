@@ -12,6 +12,7 @@ export const configSchema = z
     visualIndicator: z.boolean().default(true),
     retention: retentionSchema.default("temp"),
     retentionTtlMs: z.number().int().min(0).default(600000),
+    periodicCaptureMs: z.number().int().min(0).default(300000),
     persistentDir: z.string().optional(),
     blocklist: z.array(z.string()).default(["1Password", "Bitwarden", "Chase", "Keychain Access"]),
     allowlist: z.array(z.string()).default([]),

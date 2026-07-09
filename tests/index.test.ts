@@ -77,4 +77,35 @@ describe("DesktopContextPlugin", () => {
     expect(hooks.tool).toBeUndefined()
     expect(hooks["chat.message"]).toBeUndefined()
   })
+
+  it("starts periodic capture timer when permission is granted", async () => {
+    const adapter = await getAdapterForPlatform()
+    if (!adapter || !(await adapter.isAvailable())) {
+      return
+    }
+
+    const originalLoad = await import("../src/privacy/permission")
+    const savedState = await originalLoad.loadPermissionState()
+    await originalLoad.savePermissionState({ granted: true })
+
+    let captureCount = 0
+    const originalCapture = adapter.capture.bind(adapter)
+    adapter.capture = async (...args) => {
+      captureCount++
+      return originalCapture(...args)
+    }
+
+    await DesktopContextPlugin(mockInput, {
+      retention: "memory",
+      visualIndicator: false,
+      periodicCaptureMs: 50,
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    adapter.capture = originalCapture
+    await originalLoad.savePermissionState(savedState)
+
+    expect(captureCount).toBeGreaterThanOrEqual(1)
+  })
 })
