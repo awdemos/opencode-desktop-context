@@ -1,6 +1,6 @@
 {
   "name": "opencode-desktop-context",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "OpenCode plugin that captures desktop screenshots for session context",
   "type": "module",
   "license": "MIT",

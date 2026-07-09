@@ -57,6 +57,9 @@ npm install opencode-desktop-context
 | `blocklist` | `string[]` | `["1Password", "Bitwarden", ...]` | Window/app titles or names to never capture. |
 | `allowlist` | `string[]` | `[]` | If non-empty, only capture when active window matches. |
 | `quality` | `number` | `80` | JPEG quality for attachments (PNG if `100`). |
+| `visionModel` | `string \| null` | `null` | Local Ollama vision model to describe screenshots (e.g. `moondream:latest`). When set, autoAttach sends a text summary instead of the raw image. |
+| `ollamaBaseUrl` | `string` | `http://127.0.0.1:11434` | Base URL of your local Ollama server. |
+| `periodicCaptureMs` | `number` | `300000` | Automatically refresh the cached screenshot every N ms. Set to `0` to disable. |
 
 ### Storage locations
 
@@ -130,6 +133,35 @@ Some OpenCode models cannot process image attachments. If your model does not su
 ## Privacy
 
 The first time `capture_desktop` is called, the plugin records a permission grant in `~/.config/opencode/desktop-context-permission.json`. You can revoke permission by deleting that file. The blocklist is checked against the active window title and application name before every capture.
+
+## Local vision mode
+
+To keep screenshots private and avoid sending raw images to cloud models, enable the local Ollama vision mode:
+
+```json
+{
+  "plugin": [
+    ["opencode-desktop-context", {
+      "visionModel": "moondream:latest",
+      "ollamaBaseUrl": "http://127.0.0.1:11434",
+      "autoAttach": true,
+      "periodicCaptureMs": 300000
+    }]
+  ]
+}
+```
+
+When `visionModel` is set:
+
+- `autoAttach` sends a text description of the desktop instead of the image file.
+- The plugin exposes a `describe_desktop` tool the assistant can call explicitly.
+- Screenshots are still captured periodically to keep context fresh.
+
+Install a vision model in Ollama first:
+
+```bash
+ollama pull moondream:latest
+```
 
 ## Development
 

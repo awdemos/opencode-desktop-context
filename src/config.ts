@@ -13,6 +13,8 @@ export const configSchema = z
     retention: retentionSchema.default("temp"),
     retentionTtlMs: z.number().int().min(0).default(600000),
     periodicCaptureMs: z.number().int().min(0).default(300000),
+    visionModel: z.string().optional(),
+    ollamaBaseUrl: z.string().url().default("http://127.0.0.1:11434"),
     persistentDir: z.string().optional(),
     blocklist: z.array(z.string()).default(["1Password", "Bitwarden", "Chase", "Keychain Access"]),
     allowlist: z.array(z.string()).default([]),

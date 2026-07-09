@@ -41,6 +41,7 @@ describe("parseConfig", () => {
     expect(config.persistentDir).toBe("/tmp/screenshots")
     expect(config.retentionTtlMs).toBe(1000)
     expect(config.periodicCaptureMs).toBe(60000)
+    expect(config.ollamaBaseUrl).toBe("http://127.0.0.1:11434")
     expect(config.blocklist).toEqual(["SecretApp"])
     expect(config.allowlist).toEqual(["Code"])
     expect(config.quality).toBe(60)
@@ -60,5 +61,14 @@ describe("parseConfig", () => {
 
   it("rejects negative periodicCaptureMs", () => {
     expect(() => parseConfig({ periodicCaptureMs: -1 })).toThrow()
+  })
+
+  it("accepts visionModel and custom ollamaBaseUrl", () => {
+    const config = parseConfig({
+      visionModel: "moondream:latest",
+      ollamaBaseUrl: "http://localhost:11434",
+    })
+    expect(config.visionModel).toBe("moondream:latest")
+    expect(config.ollamaBaseUrl).toBe("http://localhost:11434")
   })
 })

@@ -1,11 +1,13 @@
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin, ToolDefinition } from "@opencode-ai/plugin"
 import { parseConfig } from "./config.js"
 import { createCaptureOrchestrator } from "./capture/index.js"
 import { createStorage } from "./storage.js"
 import { loadPermissionState, savePermissionState } from "./privacy/index.js"
 import { createCaptureDesktopTool } from "./tools/capture-desktop.js"
+import { createDescribeDesktopTool } from "./tools/describe-desktop.js"
 import { createChatMessageHook } from "./hooks/chat-message.js"
 import { createSystemHintHook } from "./hooks/system-hint.js"
+import { createVisionClient } from "./vision.js"
 import { getPlatform } from "./capture/types.js"
 import { macOSAdapter } from "./capture/macos.js"
 import { windowsAdapter } from "./capture/windows.js"
@@ -67,6 +69,10 @@ export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
       clearCache: orchestrator.clearCache,
     }
 
+    const visionClient = config.visionModel
+      ? createVisionClient({ baseUrl: config.ollamaBaseUrl, model: config.visionModel })
+      : undefined
+
     if (config.periodicCaptureMs > 0) {
       const interval = setInterval(async () => {
         try {
@@ -80,23 +86,29 @@ export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
       interval.unref?.()
     }
 
+    const tools: Record<string, ToolDefinition> = {
+      capture_desktop: createCaptureDesktopTool({
+        captureIfAllowed: async (opts) => {
+          let perm = await loadPermissionState().catch(() => ({ granted: false }))
+          if (!perm.granted) {
+            await savePermissionState({ granted: true, askedAt: new Date().toISOString() }).catch(() => {})
+            perm = await loadPermissionState().catch(() => ({ granted: false }))
+          }
+          if (!perm.granted) return null
+          return orchestrator.captureIfAllowed(opts)
+        },
+        clearCache: orchestrator.clearCache,
+      }),
+    }
+
+    if (visionClient) {
+      tools.describe_desktop = createDescribeDesktopTool(orchestrator, visionClient)
+    }
+
     return {
-      "chat.message": createChatMessageHook(permissionedOrchestrator, config),
+      "chat.message": createChatMessageHook(permissionedOrchestrator, config, visionClient),
       "experimental.chat.system.transform": createSystemHintHook(config),
-      tool: {
-        capture_desktop: createCaptureDesktopTool({
-          captureIfAllowed: async (opts) => {
-            let perm = await loadPermissionState().catch(() => ({ granted: false }))
-            if (!perm.granted) {
-              await savePermissionState({ granted: true, askedAt: new Date().toISOString() }).catch(() => {})
-              perm = await loadPermissionState().catch(() => ({ granted: false }))
-            }
-            if (!perm.granted) return null
-            return orchestrator.captureIfAllowed(opts)
-          },
-          clearCache: orchestrator.clearCache,
-        }),
-      },
+      tool: tools,
     }
   } catch (err) {
     await logError(ctx, "DesktopContextPlugin failed to initialize", err)
