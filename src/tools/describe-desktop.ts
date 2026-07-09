@@ -23,7 +23,11 @@ export function createDescribeDesktopTool(orchestrator: CaptureOrchestrator, vis
           }
         }
 
-        const description = await visionClient.describeImage(capture.buffer, capture.format, args.prompt)
+        const description = await visionClient.describeImage(
+          capture.buffer,
+          capture.format,
+          args.prompt ?? "Describe this screenshot and transcribe any readable text.",
+        )
 
         return {
           title: "Desktop described",

@@ -11,12 +11,13 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
   async function describeImage(
     imageBuffer: Buffer,
     format: "png" | "jpeg",
-    prompt = "Describe this screenshot and transcribe any readable text.",
+    prompt?: string,
   ): Promise<string> {
+    const effectivePrompt = prompt ?? "Describe this screenshot and transcribe any readable text."
     const url = `${options.baseUrl.replace(/\/$/, "")}/api/generate`
     const body = {
       model: options.model,
-      prompt,
+      prompt: effectivePrompt,
       images: [imageBuffer.toString("base64")],
       stream: false,
     }
