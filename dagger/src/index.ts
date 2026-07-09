@@ -46,6 +46,7 @@ export class OpencodeDesktopContext {
     const source = projectSource()
     const node = dag.container()
       .from("oven/bun:latest")
+      .withExec(["sh", "-c", "if command -v apk; then apk add --no-cache npm; else apt-get update && apt-get install -y npm; fi"])
       .withDirectory("/src", source)
       .withWorkdir("/src")
       .withExec(["bun", "install"])
@@ -55,7 +56,7 @@ export class OpencodeDesktopContext {
       .withExec([
         "sh",
         "-c",
-        'echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc && npm publish --access public',
+        'printf "//registry.npmjs.org/:_authToken=%s\n" "$NPM_TOKEN" > ~/.npmrc && npm publish --access public',
       ])
 
     return await node.stdout()

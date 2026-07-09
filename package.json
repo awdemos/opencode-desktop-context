@@ -7,7 +7,7 @@
   "author": "vibecodingagency-founder",
   "repository": {
     "type": "git",
-    "url": "https://github.com/awdemos/opencode-desktop-context.git"
+    "url": "git+https://github.com/awdemos/opencode-desktop-context.git"
   },
   "homepage": "https://github.com/awdemos/opencode-desktop-context#readme",
   "bugs": {
@@ -26,7 +26,9 @@
   ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
