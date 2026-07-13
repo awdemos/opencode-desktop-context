@@ -1,11 +1,19 @@
+import { z } from "zod"
+
 export type VisionClientOptions = {
   baseUrl: string
   model: string
+  apiKey?: string
 }
 
 export type VisionClient = {
   describeImage: (imageBuffer: Buffer, format: "png" | "jpeg", prompt?: string) => Promise<string>
 }
+
+const ollamaResponseSchema = z.object({
+  response: z.string().optional(),
+  error: z.string().optional(),
+})
 
 export function createVisionClient(options: VisionClientOptions): VisionClient {
   async function describeImage(
@@ -22,9 +30,14 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
       stream: false,
     }
 
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    if (options.apiKey) {
+      headers["Authorization"] = `Bearer ${options.apiKey}`
+    }
+
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     })
 
@@ -32,7 +45,7 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
       throw new Error(`Ollama vision request failed: ${response.status} ${response.statusText}`)
     }
 
-    const result = (await response.json()) as { response?: string; error?: string }
+    const result = ollamaResponseSchema.parse(await response.json())
     if (result.error) {
       throw new Error(`Ollama vision error: ${result.error}`)
     }

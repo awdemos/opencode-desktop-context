@@ -1,9 +1,16 @@
-import { describe, it, expect } from "bun:test"
+import { describe, it, expect, beforeEach, afterEach } from "bun:test"
+import { Effect } from "effect"
 import { createCaptureDesktopTool } from "../src/tools/capture-desktop"
 import { createDescribeDesktopTool } from "../src/tools/describe-desktop"
 import type { CaptureOrchestrator } from "../src/capture/index"
 import type { VisionClient } from "../src/vision"
 import type { ToolContext } from "@opencode-ai/plugin"
+import { savePermissionState, loadPermissionState } from "../src/privacy"
+import { rm } from "node:fs/promises"
+import { homedir } from "node:os"
+import { join } from "node:path"
+
+const PERMISSION_FILE = join(homedir(), ".config", "opencode", "desktop-context-permission.json")
 
 const mockContext = {
   sessionID: "ses_test",
@@ -13,7 +20,7 @@ const mockContext = {
   worktree: "/tmp",
   abort: new AbortController().signal,
   metadata: () => {},
-  ask: async () => {},
+  ask: () => Effect.void,
 } as unknown as ToolContext
 
 function makeOrchestrator(capture: ReturnType<CaptureOrchestrator["captureIfAllowed"]> | null): CaptureOrchestrator {
@@ -23,9 +30,28 @@ function makeOrchestrator(capture: ReturnType<CaptureOrchestrator["captureIfAllo
   } as unknown as CaptureOrchestrator
 }
 
+function makeTool(
+  orchestrator: CaptureOrchestrator,
+  options: { requestPermission?: (ctx: ToolContext) => Promise<boolean>; cooldownMs?: number } = {},
+) {
+  return createCaptureDesktopTool({
+    captureIfAllowed: orchestrator.captureIfAllowed,
+    clearCache: orchestrator.clearCache,
+    requestPermission: options.requestPermission ?? (async () => true),
+    cooldownMs: options.cooldownMs ?? 0,
+  })
+}
+
 describe("createCaptureDesktopTool", () => {
+  beforeEach(async () => {
+    await rm(PERMISSION_FILE, { force: true })
+  })
+  afterEach(async () => {
+    await rm(PERMISSION_FILE, { force: true })
+  })
+
   it("returns an attachment when capture succeeds from buffer", async () => {
-    const t = createCaptureDesktopTool(makeOrchestrator({ buffer: Buffer.from("fake"), format: "png", capturedAt: 12345 }))
+    const t = makeTool(makeOrchestrator({ buffer: Buffer.from("fake"), format: "png", capturedAt: 12345 }))
     const result = await t.execute({ reason: "test" }, mockContext)
 
     expect(typeof result).toBe("object")
@@ -41,7 +67,7 @@ describe("createCaptureDesktopTool", () => {
   })
 
   it("uses file:// url when capture has a path", async () => {
-    const t = createCaptureDesktopTool(
+    const t = makeTool(
       makeOrchestrator({ buffer: Buffer.from("fake"), format: "jpeg", capturedAt: 67890, path: "/tmp/capture.jpg" }),
     )
     const result = await t.execute({ reason: "test" }, mockContext)
@@ -50,15 +76,31 @@ describe("createCaptureDesktopTool", () => {
     expect(attachments[0].mime).toBe("image/jpeg")
   })
 
-  it("reports blocked capture", async () => {
-    const t = createCaptureDesktopTool(makeOrchestrator(null))
+  it("reports blocked capture when permission is denied", async () => {
+    const t = makeTool(makeOrchestrator({ buffer: Buffer.from("fake"), format: "png", capturedAt: 1 }), {
+      requestPermission: async () => false,
+    })
     const result = await t.execute({ reason: "test" }, mockContext)
     expect(result).toHaveProperty("title", "Desktop capture blocked")
-    expect(result).toHaveProperty("output", expect.stringContaining("blocked"))
+    expect(result).toHaveProperty("output", expect.stringContaining("permission was not granted"))
+  })
+
+  it("requests permission and captures when granted", async () => {
+    await savePermissionState({ granted: false })
+    const t = makeTool(makeOrchestrator({ buffer: Buffer.from("fake"), format: "png", capturedAt: 1 }), {
+      requestPermission: async () => {
+        await savePermissionState({ granted: true })
+        return true
+      },
+    })
+    const result = await t.execute({ reason: "test" }, mockContext)
+    const state = await loadPermissionState()
+    expect(state.granted).toBe(true)
+    expect(result).toHaveProperty("title", "Desktop captured")
   })
 
   it("reports capture errors", async () => {
-    const t = createCaptureDesktopTool({
+    const t = makeTool({
       captureIfAllowed: async () => {
         throw new Error("capture exploded")
       },
@@ -67,6 +109,16 @@ describe("createCaptureDesktopTool", () => {
     const result = await t.execute({ reason: "test" }, mockContext)
     expect(result).toHaveProperty("title", "Desktop capture failed")
     expect(result).toHaveProperty("output", "capture exploded")
+  })
+
+  it("rate limits rapid capture requests", async () => {
+    const t = makeTool(makeOrchestrator({ buffer: Buffer.from("fake"), format: "png", capturedAt: 1 }), {
+      cooldownMs: 1000,
+    })
+    const first = await t.execute({ reason: "test" }, mockContext)
+    expect(first).toHaveProperty("title", "Desktop captured")
+    const second = await t.execute({ reason: "test" }, mockContext)
+    expect(second).toHaveProperty("title", "Desktop capture rate limited")
   })
 })
 

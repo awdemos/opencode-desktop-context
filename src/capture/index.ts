@@ -44,6 +44,10 @@ export function createCaptureOrchestrator(adapter: CaptureAdapter, config: Confi
       return null
     }
 
+    if (config.visualIndicator) {
+      console.log("[desktop-context] Capturing desktop screenshot...")
+    }
+
     const raw = await adapter.capture(config.captureTarget)
     let stored = await processCapture(raw)
     stored = await storage.save(stored)

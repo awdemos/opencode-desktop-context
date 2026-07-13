@@ -1,4 +1,6 @@
+import { Effect } from "effect"
 import type { Plugin, ToolDefinition } from "@opencode-ai/plugin"
+import type { ToolContext } from "@opencode-ai/plugin"
 import { parseConfig } from "./config.js"
 import { createCaptureOrchestrator } from "./capture/index.js"
 import { createStorage } from "./storage.js"
@@ -36,6 +38,28 @@ async function logError(ctx: any, message: string, err?: unknown): Promise<void>
     // Last-resort logging so we never crash opencode because of a logging failure.
     console.error(`[desktop-context] ${message}: ${detail}`)
   }
+}
+
+async function requestScreenCapturePermission(context: ToolContext): Promise<boolean> {
+  if (typeof context.ask !== "function") {
+    return false
+  }
+  try {
+    const effect = context.ask({
+      permission: "desktop-context:capture",
+      patterns: ["capture desktop screenshots"],
+      always: [],
+      metadata: {
+        plugin: "opencode-desktop-context",
+        description: "Allow this plugin to capture your desktop screenshots?",
+      },
+    })
+    await Effect.runPromise(effect as Effect.Effect<void>)
+  } catch {
+    return false
+  }
+  const perm = await loadPermissionState().catch(() => ({ granted: false }))
+  return perm.granted
 }
 
 export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
@@ -88,16 +112,10 @@ export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
 
     const tools: Record<string, ToolDefinition> = {
       capture_desktop: createCaptureDesktopTool({
-        captureIfAllowed: async (opts) => {
-          let perm = await loadPermissionState().catch(() => ({ granted: false }))
-          if (!perm.granted) {
-            await savePermissionState({ granted: true, askedAt: new Date().toISOString() }).catch(() => {})
-            perm = await loadPermissionState().catch(() => ({ granted: false }))
-          }
-          if (!perm.granted) return null
-          return orchestrator.captureIfAllowed(opts)
-        },
+        captureIfAllowed: orchestrator.captureIfAllowed,
         clearCache: orchestrator.clearCache,
+        requestPermission: requestScreenCapturePermission,
+        cooldownMs: config.captureCooldownMs,
       }),
     }
 
@@ -108,6 +126,14 @@ export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
     return {
       "chat.message": createChatMessageHook(permissionedOrchestrator, config, visionClient),
       "experimental.chat.system.transform": createSystemHintHook(config),
+      "permission.ask": async (input, output) => {
+        if (input.id !== "desktop-context:capture") return
+        if (output.status === "allow") {
+          await savePermissionState({ granted: true, askedAt: new Date().toISOString() }).catch(() => {})
+        } else {
+          await savePermissionState({ granted: false, askedAt: new Date().toISOString() }).catch(() => {})
+        }
+      },
       tool: tools,
     }
   } catch (err) {

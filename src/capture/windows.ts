@@ -43,35 +43,41 @@ public class CaptureWin {
   public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
 }
 "@
-$path = "$env:TEMP\\opencode-dc-${Date.now()}.png"
-if (${activeWindow}) {
-  $hwnd = [CaptureWin]::GetForegroundWindow()
-  $rect = New-Object CaptureWin+RECT
-  # DWM bounds are in physical pixels and exclude the drop shadow; fall back to GetWindowRect if DWM fails.
-  $dwmOk = [CaptureWin]::DwmGetWindowAttribute($hwnd, [CaptureWin]::DWMWA_EXTENDED_FRAME_BOUNDS, [ref]$rect, [System.Runtime.InteropServices.Marshal]::SizeOf([CaptureWin+RECT])) -eq 0
-  if (-not $dwmOk) {
-    [void][CaptureWin]::GetWindowRect($hwnd, [ref]$rect)
+$dir = Join-Path $env:TEMP ("opencode-dc-" + [System.IO.Path]::GetRandomFileName())
+New-Item -ItemType Directory -Path $dir -Force | Out-Null
+$path = Join-Path $dir "capture.png"
+try {
+  if (${activeWindow}) {
+    $hwnd = [CaptureWin]::GetForegroundWindow()
+    $rect = New-Object CaptureWin+RECT
+    # DWM bounds are in physical pixels and exclude the drop shadow; fall back to GetWindowRect if DWM fails.
+    $dwmOk = [CaptureWin]::DwmGetWindowAttribute($hwnd, [CaptureWin]::DWMWA_EXTENDED_FRAME_BOUNDS, [ref]$rect, [System.Runtime.InteropServices.Marshal]::SizeOf([CaptureWin+RECT])) -eq 0
+    if (-not $dwmOk) {
+      [void][CaptureWin]::GetWindowRect($hwnd, [ref]$rect)
+    }
+    $w = $rect.Right - $rect.Left
+    $h = $rect.Bottom - $rect.Top
+    if ($w -le 0 -or $h -le 0) {
+      throw "Unable to determine active window bounds"
+    }
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+    $gfx.CopyFromScreen($rect.Left, $rect.Top, 0, 0, New-Object System.Drawing.Size($w, $h))
+    $bmp.Save($path)
+  } else {
+    $screens = [System.Windows.Forms.Screen]::AllScreens
+    $left = 0; $top = 0; $right = 0; $bottom = 0
+    foreach ($s in $screens) { if ($s.Bounds.Left -lt $left) { $left = $s.Bounds.Left }; if ($s.Bounds.Top -lt $top) { $top = $s.Bounds.Top }; if ($s.Bounds.Right -gt $right) { $right = $s.Bounds.Right }; if ($s.Bounds.Bottom -gt $bottom) { $bottom = $s.Bounds.Bottom } }
+    $w = $right - $left; $h = $bottom - $top
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+    $gfx.CopyFromScreen($left, $top, 0, 0, $bmp.Size)
+    $bmp.Save($path)
   }
-  $w = $rect.Right - $rect.Left
-  $h = $rect.Bottom - $rect.Top
-  if ($w -le 0 -or $h -le 0) {
-    throw "Unable to determine active window bounds"
-  }
-  $bmp = New-Object System.Drawing.Bitmap($w, $h)
-  $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-  $gfx.CopyFromScreen($rect.Left, $rect.Top, 0, 0, New-Object System.Drawing.Size($w, $h))
-  $bmp.Save($path)
-} else {
-  $screens = [System.Windows.Forms.Screen]::AllScreens
-  $left = 0; $top = 0; $right = 0; $bottom = 0
-  foreach ($s in $screens) { if ($s.Bounds.Left -lt $left) { $left = $s.Bounds.Left }; if ($s.Bounds.Top -lt $top) { $top = $s.Bounds.Top }; if ($s.Bounds.Right -gt $right) { $right = $s.Bounds.Right }; if ($s.Bounds.Bottom -gt $bottom) { $bottom = $s.Bounds.Bottom } }
-  $w = $right - $left; $h = $bottom - $top
-  $bmp = New-Object System.Drawing.Bitmap($w, $h)
-  $gfx = [System.Drawing.Graphics]::FromImage($bmp)
-  $gfx.CopyFromScreen($left, $top, 0, 0, $bmp.Size)
-  $bmp.Save($path)
+  [System.Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
+} finally {
+  Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue
 }
-[System.Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
 `
   const result = await $`powershell.exe -NoProfile -Command ${script}`
   return Buffer.from(result.stdout.trim(), "base64")

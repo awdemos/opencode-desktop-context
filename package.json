@@ -33,8 +33,13 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "audit": "bun audit",
     "prepublishOnly": "bun run build"
   },
+  "trustedDependencies": [
+    "sharp",
+    "msgpackr-extract"
+  ],
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.14.0"
   },

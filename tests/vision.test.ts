@@ -75,6 +75,32 @@ describe("createVisionClient", () => {
     }
   })
 
+  it("sends Authorization header when apiKey is provided", async () => {
+    const client = createVisionClient({ baseUrl: "http://localhost:11434", model: "moondream", apiKey: "secret-key" })
+
+    const originalFetch = globalThis.fetch
+    let headers: HeadersInit | undefined
+    globalThis.fetch = async (_input, init) => {
+      headers = init?.headers
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ response: "ok" }),
+      } as Response
+    }
+
+    try {
+      await client.describeImage(Buffer.from("fake"), "png")
+      expect(headers).toEqual({
+        "Content-Type": "application/json",
+        "Authorization": "Bearer secret-key",
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it("throws on HTTP error", async () => {
     const client = createVisionClient({ baseUrl: "http://localhost:11434", model: "moondream" })
 

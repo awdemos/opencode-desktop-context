@@ -53,12 +53,14 @@ npm install opencode-desktop-context
 | `visualIndicator` | `boolean` | `true` | Show a brief indicator when a screenshot is taken. |
 | `retention` | `"memory" \| "temp" \| "persistent"` | `"temp"` | Where screenshots live. |
 | `retentionTtlMs` | `number` | `600000` | For `temp`, delete files older than this. |
-| `persistentDir` | `string \| null` | `null` | Required when `retention` is `"persistent"`. |
+| `persistentDir` | `string \| null` | `null` | Required when `retention` is `"persistent"`. Must be an absolute path within your home directory with no `..` segments. |
+| `captureCooldownMs` | `number` | `1000` | Minimum milliseconds between `capture_desktop` tool invocations. |
 | `blocklist` | `string[]` | `["1Password", "Bitwarden", ...]` | Window/app titles or names to never capture. |
 | `allowlist` | `string[]` | `[]` | If non-empty, only capture when active window matches. |
 | `quality` | `number` | `80` | JPEG quality for attachments (PNG if `100`). |
 | `visionModel` | `string \| null` | `null` | Local Ollama vision model to describe screenshots (e.g. `moondream:latest`). When set, autoAttach sends a text summary instead of the raw image. |
-| `ollamaBaseUrl` | `string` | `http://127.0.0.1:11434` | Base URL of your local Ollama server. |
+| `ollamaBaseUrl` | `string` | `http://127.0.0.1:11434` | Base URL of your local Ollama server. Must be a loopback/localhost URL unless `allowRemoteVision` is `true`. |
+| `allowRemoteVision` | `boolean` | `false` | Allow `ollamaBaseUrl` to point to a non-loopback endpoint. Use with caution. |
 | `periodicCaptureMs` | `number` | `300000` | Automatically refresh the cached screenshot every N ms. Set to `0` to disable. |
 
 ### Storage locations

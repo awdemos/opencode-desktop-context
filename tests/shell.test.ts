@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test"
-import { $, which, readTempFile } from "../src/capture/shell"
-import { mkdtemp, writeFile, rm } from "node:fs/promises"
+import { $, which, readTempFile, createTempCaptureDir, cleanupTempCaptureDir } from "../src/capture/shell"
+import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -18,6 +18,14 @@ describe("shell", () => {
     expect(result.stdout).toBe("hello world")
   })
 
+  it("does not treat leading dash values as flags", async () => {
+    // A value starting with - should be passed as a single positional argument,
+    // not interpreted as a flag by the invoked binary.
+    const value = "-n"
+    const result = await $`printf %s ${value}`
+    expect(result.stdout).toBe("-n")
+  })
+
   it("which finds an existing command", async () => {
     expect(await which("echo")).toBe(true)
   })
@@ -33,5 +41,19 @@ describe("shell", () => {
     const result = await readTempFile(path)
     expect(result).toEqual(Buffer.from([0, 1, 2, 3]))
     await rm(dir, { recursive: true, force: true })
+  })
+
+  it("createTempCaptureDir creates a private directory under tmpdir", async () => {
+    const dir = await createTempCaptureDir()
+    expect(dir.startsWith(tmpdir())).toBe(true)
+    await cleanupTempCaptureDir(dir)
+  })
+
+  it("cleanupTempCaptureDir removes the directory", async () => {
+    const dir = await createTempCaptureDir()
+    const file = join(dir, "file.txt")
+    await writeFile(file, "data")
+    await cleanupTempCaptureDir(dir)
+    await expect(readFile(file)).rejects.toThrow()
   })
 })

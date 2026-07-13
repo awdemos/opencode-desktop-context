@@ -1,8 +1,7 @@
-import { exec } from "node:child_process"
-import { promisify } from "node:util"
-import { readFile } from "node:fs/promises"
-
-const execAsync = promisify(exec)
+import { spawn } from "node:child_process"
+import { readFile, mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 export type ShellResult = {
   stdout: string
@@ -10,19 +9,77 @@ export type ShellResult = {
   exitCode: number
 }
 
-export async function $(strings: TemplateStringsArray, ...values: unknown[]): Promise<ShellResult> {
-  const command = buildCommand(strings, values)
-  const { stdout, stderr } = await execAsync(command, {
-    encoding: "utf8",
-    timeout: 30000,
+function pushArg(args: string[], value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) pushArg(args, item)
+  } else if (value !== undefined && value !== null) {
+    args.push(String(value))
+  }
+}
+
+function buildArgs(strings: TemplateStringsArray, values: unknown[]): string[] {
+  const args: string[] = []
+  for (let i = 0; i < strings.length; i++) {
+    const parts = strings[i].split(/\s+/).filter((part) => part.length > 0)
+    args.push(...parts)
+    if (i < values.length) {
+      pushArg(args, values[i])
+    }
+  }
+  return args
+}
+
+function runProcess(command: string, args: string[], timeoutMs: number): Promise<ShellResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { shell: false })
+    let stdout = ""
+    let stderr = ""
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM")
+      reject(new Error(`Command timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    child.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString("utf-8")
+    })
+    child.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString("utf-8")
+    })
+    child.on("error", (err) => {
+      clearTimeout(timeout)
+      reject(err)
+    })
+    child.on("close", (code) => {
+      clearTimeout(timeout)
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: code ?? 0 })
+    })
   })
-  return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0 }
+}
+
+function runShell(command: string, timeoutMs: number): Promise<ShellResult> {
+  return runProcess("sh", ["-c", command], timeoutMs)
+}
+
+export async function $(strings: TemplateStringsArray, ...values: unknown[]): Promise<ShellResult> {
+  const args = buildArgs(strings, values)
+  if (args.length === 0) {
+    return { stdout: "", stderr: "", exitCode: 0 }
+  }
+  const [command, ...commandArgs] = args
+  return runProcess(command, commandArgs, 30000)
+}
+
+function quote(value: string): string {
+  if (value === "") {
+    return "''"
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
 export async function which(cmd: string): Promise<boolean> {
   try {
-    await execAsync(`command -v ${quote(cmd)}`, { timeout: 5000 })
-    return true
+    const result = await runShell(`command -v ${quote(cmd)}`, 5000)
+    return result.exitCode === 0 && result.stdout.length > 0
   } catch {
     return false
   }
@@ -32,23 +89,10 @@ export async function readTempFile(path: string): Promise<Buffer> {
   return readFile(path)
 }
 
-function buildCommand(strings: TemplateStringsArray, values: unknown[]): string {
-  let result = ""
-  for (let i = 0; i < strings.length; i++) {
-    result += strings[i]
-    if (i < values.length) {
-      result += quote(String(values[i]))
-    }
-  }
-  return result.trim()
+export async function createTempCaptureDir(): Promise<string> {
+  return mkdtemp(join(tmpdir(), "opencode-dc-"))
 }
 
-function quote(value: string): string {
-  if (value === "") {
-    return "''"
-  }
-  if (/^[a-zA-Z0-9_./:@,-]+$/.test(value)) {
-    return value
-  }
-  return `'${value.replace(/'/g, `'\\''`)}'`
+export async function cleanupTempCaptureDir(dir: string): Promise<void> {
+  await rm(dir, { recursive: true, force: true })
 }
