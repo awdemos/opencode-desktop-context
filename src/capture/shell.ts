@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { readFile, mkdtemp, rm } from "node:fs/promises"
+import { readFile, mkdtemp, rm, lstat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -60,18 +60,35 @@ function runShell(command: string, timeoutMs: number): Promise<ShellResult> {
   return runProcess("sh", ["-c", command], timeoutMs)
 }
 
+function isShellMetacharacter(value: string): boolean {
+  return /[;&|`$(){}[\]\*?#~!\n\r]/.test(value)
+}
+
 export async function $(strings: TemplateStringsArray, ...values: unknown[]): Promise<ShellResult> {
   const args = buildArgs(strings, values)
   if (args.length === 0) {
     return { stdout: "", stderr: "", exitCode: 0 }
   }
   const [command, ...commandArgs] = args
+  for (const arg of commandArgs) {
+    if (isShellMetacharacter(arg)) {
+      throw new Error(`Refusing to pass shell metacharacters to subprocess: ${arg}`)
+    }
+    if (arg.startsWith("-")) {
+      throw new Error(`Refusing to pass leading-dash argument to subprocess: ${arg}`)
+    }
+  }
   return runProcess(command, commandArgs, 30000)
 }
+
+const SAFE_SHELL_VALUE = /^[a-zA-Z0-9_+.,:@/%-]+$/
 
 function quote(value: string): string {
   if (value === "") {
     return "''"
+  }
+  if (SAFE_SHELL_VALUE.test(value) && !value.startsWith("-")) {
+    return value
   }
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
@@ -86,6 +103,10 @@ export async function which(cmd: string): Promise<boolean> {
 }
 
 export async function readTempFile(path: string): Promise<Buffer> {
+  const info = await lstat(path)
+  if (!info.isFile() || info.isSymbolicLink()) {
+    throw new Error(`Refusing to read non-regular temp file: ${path}`)
+  }
   return readFile(path)
 }
 

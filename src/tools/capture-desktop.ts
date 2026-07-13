@@ -34,6 +34,9 @@ export function createCaptureDesktopTool(options: CaptureDesktopToolOptions): To
           }
         }
 
+        // Set cooldown before invoking capture to prevent concurrent calls from bypassing the rate limit.
+        lastCaptureTime = Date.now()
+
         const capture = await options.captureIfAllowed({ force: true })
         if (!capture) {
           return {
@@ -41,8 +44,6 @@ export function createCaptureDesktopTool(options: CaptureDesktopToolOptions): To
             output: "Screen capture was blocked by the plugin's privacy settings or permission was not granted.",
           }
         }
-
-        lastCaptureTime = Date.now()
 
         const url = capture.path ? `file://${capture.path}` : `data:image/${capture.format};base64,${capture.buffer.toString("base64")}`
 

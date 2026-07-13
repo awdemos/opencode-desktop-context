@@ -4,6 +4,7 @@ export type VisionClientOptions = {
   baseUrl: string
   model: string
   apiKey?: string
+  allowRemoteVision?: boolean
 }
 
 export type VisionClient = {
@@ -22,7 +23,17 @@ export function createVisionClient(options: VisionClientOptions): VisionClient {
     prompt?: string,
   ): Promise<string> {
     const effectivePrompt = prompt ?? "Describe this screenshot and transcribe any readable text."
-    const url = `${options.baseUrl.replace(/\/$/, "")}/api/generate`
+    const base = options.baseUrl.trim()
+    const parsed = new URL(base)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(`Vision URL must use http/https, got ${parsed.protocol}`)
+    }
+    const host = parsed.hostname.toLowerCase()
+    const isLoopback = host === "localhost" || host === "127.0.0.1" || host === "::1"
+    if (!isLoopback && !options.allowRemoteVision) {
+      throw new Error(`Refusing to send screenshot to non-loopback vision URL: ${base}`)
+    }
+    const url = `${base.replace(/\/$/, "")}/api/generate`
     const body = {
       model: options.model,
       prompt: effectivePrompt,

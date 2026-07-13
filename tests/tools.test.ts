@@ -10,6 +10,8 @@ import { rm } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
+const originalEnv = { ...process.env }
+
 const PERMISSION_FILE = join(homedir(), ".config", "opencode", "desktop-context-permission.json")
 
 const mockContext = {
@@ -48,6 +50,10 @@ describe("createCaptureDesktopTool", () => {
   })
   afterEach(async () => {
     await rm(PERMISSION_FILE, { force: true })
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key]
+    }
+    Object.assign(process.env, originalEnv)
   })
 
   it("returns an attachment when capture succeeds from buffer", async () => {
@@ -119,6 +125,33 @@ describe("createCaptureDesktopTool", () => {
     expect(first).toHaveProperty("title", "Desktop captured")
     const second = await t.execute({ reason: "test" }, mockContext)
     expect(second).toHaveProperty("title", "Desktop capture rate limited")
+  })
+
+  it("does not silently grant permission without env opt-in or consent", async () => {
+    await savePermissionState({ granted: false })
+    delete process.env.OPENCODE_DESKTOP_CONTEXT_ALLOW_CAPTURE
+    const t = makeTool(makeOrchestrator({ buffer: Buffer.from("fake"), format: "png", capturedAt: 1 }), {
+      requestPermission: async () => false,
+    })
+    const result = await t.execute({ reason: "test" }, mockContext)
+    const state = await loadPermissionState()
+    expect(state.granted).toBe(false)
+    expect(result).toHaveProperty("title", "Desktop capture blocked")
+  })
+
+  it("grants permission via explicit env opt-in", async () => {
+    await savePermissionState({ granted: false })
+    process.env.OPENCODE_DESKTOP_CONTEXT_ALLOW_CAPTURE = "1"
+    const t = makeTool(makeOrchestrator({ buffer: Buffer.from("fake"), format: "png", capturedAt: 1 }), {
+      requestPermission: async () => {
+        await savePermissionState({ granted: true, askedAt: new Date().toISOString() })
+        return true
+      },
+    })
+    const result = await t.execute({ reason: "test" }, mockContext)
+    const state = await loadPermissionState()
+    expect(state.granted).toBe(true)
+    expect(result).toHaveProperty("title", "Desktop captured")
   })
 })
 

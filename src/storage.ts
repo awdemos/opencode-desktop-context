@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, readdir, realpath, rm, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { isAbsolute, join, relative, resolve, normalize } from "node:path"
 import type { StoredCapture } from "./capture/types.js"
@@ -21,16 +21,44 @@ function hasDotDotSegments(input: string): boolean {
   return normalize(input) !== resolve(input) || input.split(/[\\/]/).some((segment) => segment === "..")
 }
 
-export function validatePersistentDir(directory: string): void {
+export async function validatePersistentDir(directory: string): Promise<void> {
   if (!isAbsolute(directory)) {
     throw new Error("persistentDir must be an absolute path")
   }
   if (hasDotDotSegments(directory)) {
     throw new Error("persistentDir must not contain '..' segments")
   }
-  if (!isWithinUserHome(directory)) {
-    throw new Error("persistentDir must be within the user home directory")
+  const resolved = resolve(normalize(await realpathSafe(directory)))
+  const home = resolve(normalize(homedir()))
+  if (isWithin(resolved, home)) {
+    return
   }
+  const workspaceRoot = getWorkspaceRoot()
+  if (workspaceRoot && isWithin(resolved, workspaceRoot)) {
+    return
+  }
+  throw new Error("persistentDir must be within the user home directory or an explicit workspace root")
+}
+
+async function realpathSafe(dir: string): Promise<string> {
+  try {
+    return await realpath(dir)
+  } catch {
+    return dir
+  }
+}
+
+function isWithin(child: string, parent: string): boolean {
+  const rel = relative(resolve(normalize(parent)), resolve(normalize(child)))
+  return !rel.startsWith("..") && !isAbsolute(rel)
+}
+
+function getWorkspaceRoot(): string | undefined {
+  const raw = process.env.OPENCODE_DESKTOP_CONTEXT_WORKSPACE_ROOT
+  if (!raw) return undefined
+  const resolved = resolve(normalize(raw))
+  if (!isAbsolute(resolved)) return undefined
+  return resolved
 }
 
 export function createMemoryStorage(): Storage {
@@ -73,8 +101,8 @@ export function createTempStorage(): Storage {
   }
 }
 
-export function createPersistentStorage(directory: string): Storage {
-  validatePersistentDir(directory)
+export async function createPersistentStorage(directory: string): Promise<Storage> {
+  await validatePersistentDir(directory)
   return {
     async save(capture) {
       await mkdir(directory, { recursive: true, mode: 0o700 })
@@ -89,11 +117,11 @@ export function createPersistentStorage(directory: string): Storage {
   }
 }
 
-export function createStorage(backend: StorageBackend, persistentDir?: string): Storage {
+export async function createStorage(backend: StorageBackend, persistentDir?: string): Promise<Storage> {
   switch (backend) {
     case "persistent":
       if (!persistentDir) throw new Error("persistentDir required")
-      return createPersistentStorage(persistentDir)
+      return await createPersistentStorage(persistentDir)
     case "temp":
       return createTempStorage()
     case "memory":

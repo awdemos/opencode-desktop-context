@@ -78,7 +78,7 @@ export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
       return {}
     }
 
-    const storage = createStorage(config.retention, config.persistentDir)
+    const storage = await createStorage(config.retention, config.persistentDir)
     await storage.cleanup(config.retentionTtlMs).catch(() => {})
     const orchestrator = createCaptureOrchestrator(adapter, config, storage)
 
@@ -93,8 +93,24 @@ export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
       clearCache: orchestrator.clearCache,
     }
 
+    async function requireExplicitConsent(context: ToolContext): Promise<boolean> {
+      // The model must never be able to silently grant itself permission.
+      // If the host does not provide a consent prompt, require an explicit
+      // environment opt-in before any capture can happen.
+      if (process.env.OPENCODE_DESKTOP_CONTEXT_ALLOW_CAPTURE === "1") {
+        await savePermissionState({ granted: true, askedAt: new Date().toISOString() }).catch(() => {})
+        const perm = await loadPermissionState().catch(() => ({ granted: false }))
+        return perm.granted
+      }
+      return requestScreenCapturePermission(context)
+    }
+
     const visionClient = config.visionModel
-      ? createVisionClient({ baseUrl: config.ollamaBaseUrl, model: config.visionModel })
+      ? createVisionClient({
+          baseUrl: config.ollamaBaseUrl,
+          model: config.visionModel,
+          allowRemoteVision: config.allowRemoteVision,
+        })
       : undefined
 
     if (config.periodicCaptureMs > 0) {
@@ -112,9 +128,9 @@ export const DesktopContextPlugin: Plugin = async (ctx, options = {}) => {
 
     const tools: Record<string, ToolDefinition> = {
       capture_desktop: createCaptureDesktopTool({
-        captureIfAllowed: orchestrator.captureIfAllowed,
-        clearCache: orchestrator.clearCache,
-        requestPermission: requestScreenCapturePermission,
+        captureIfAllowed: permissionedOrchestrator.captureIfAllowed,
+        clearCache: permissionedOrchestrator.clearCache,
+        requestPermission: requireExplicitConsent,
         cooldownMs: config.captureCooldownMs,
       }),
     }

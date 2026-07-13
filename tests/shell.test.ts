@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test"
 import { $, which, readTempFile, createTempCaptureDir, cleanupTempCaptureDir } from "../src/capture/shell"
-import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises"
+import { mkdtemp, writeFile, rm, readFile, symlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -18,12 +18,14 @@ describe("shell", () => {
     expect(result.stdout).toBe("hello world")
   })
 
-  it("does not treat leading dash values as flags", async () => {
-    // A value starting with - should be passed as a single positional argument,
-    // not interpreted as a flag by the invoked binary.
+  it("rejects leading dash values as unsafe", async () => {
     const value = "-n"
-    const result = await $`printf %s ${value}`
-    expect(result.stdout).toBe("-n")
+    await expect($`printf %s ${value}`).rejects.toThrow("leading-dash")
+  })
+
+  it("rejects shell metacharacters in interpolated values", async () => {
+    const value = "foo; echo bar"
+    await expect($`printf %s ${value}`).rejects.toThrow("shell metacharacters")
   })
 
   it("which finds an existing command", async () => {
@@ -40,6 +42,16 @@ describe("shell", () => {
     await writeFile(path, Buffer.from([0, 1, 2, 3]))
     const result = await readTempFile(path)
     expect(result).toEqual(Buffer.from([0, 1, 2, 3]))
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it("readTempFile refuses to read non-regular files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "shell-test-"))
+    const link = join(dir, "link")
+    const target = join(dir, "target")
+    await writeFile(target, "target")
+    await symlink(target, link)
+    await expect(readTempFile(link)).rejects.toThrow("non-regular")
     await rm(dir, { recursive: true, force: true })
   })
 

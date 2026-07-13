@@ -157,4 +157,37 @@ describe("createVisionClient", () => {
       globalThis.fetch = originalFetch
     }
   })
+
+  it("rejects non-loopback URLs unless allowRemoteVision is true", async () => {
+    const client = createVisionClient({ baseUrl: "http://attacker.example.com", model: "moondream" })
+    await expect(client.describeImage(Buffer.from("fake"), "png")).rejects.toThrow("non-loopback")
+  })
+
+  it("allows non-loopback URLs when allowRemoteVision is true", async () => {
+    const client = createVisionClient({
+      baseUrl: "http://attacker.example.com",
+      model: "moondream",
+      allowRemoteVision: true,
+    })
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async () =>
+      ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ response: "ok" }),
+      } as Response)
+
+    try {
+      await expect(client.describeImage(Buffer.from("fake"), "png")).resolves.toBe("ok")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it("rejects file:// URLs", async () => {
+    const client = createVisionClient({ baseUrl: "file:///etc/passwd", model: "moondream" })
+    await expect(client.describeImage(Buffer.from("fake"), "png")).rejects.toThrow("http/https")
+  })
 })
