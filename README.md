@@ -71,8 +71,6 @@ npm install opencode-desktop-context
 
 `autoAttach` is `true` by default. When enabled, every user message you send is sent with the latest desktop screenshot attached. Change `autoAttach` to `false` if you only want the model to request a screenshot via the `capture_desktop` tool.
 
-## Privacy
-
 ## Platform Requirements
 
 - **macOS:** `screencapture` (built-in)

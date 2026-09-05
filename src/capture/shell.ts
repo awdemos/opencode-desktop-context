@@ -1,8 +1,5 @@
-import { exec } from "node:child_process"
-import { promisify } from "node:util"
+import { spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
-
-const execAsync = promisify(exec)
 
 export type ShellResult = {
   stdout: string
@@ -10,19 +7,15 @@ export type ShellResult = {
   exitCode: number
 }
 
-export async function $(strings: TemplateStringsArray, ...values: unknown[]): Promise<ShellResult> {
-  const command = buildCommand(strings, values)
-  const { stdout, stderr } = await execAsync(command, {
-    encoding: "utf8",
-    timeout: 30000,
-  })
-  return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0 }
+export async function run(command: string, args: string[]): Promise<ShellResult> {
+  const { stdout, stderr, exitCode } = await spawnAsync(command, args)
+  return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode }
 }
 
 export async function which(cmd: string): Promise<boolean> {
   try {
-    await execAsync(`command -v ${quote(cmd)}`, { timeout: 5000 })
-    return true
+    const result = await spawnAsync("command", ["-v", cmd], { timeout: 5000 })
+    return result.exitCode === 0
   } catch {
     return false
   }
@@ -32,23 +25,45 @@ export async function readTempFile(path: string): Promise<Buffer> {
   return readFile(path)
 }
 
-function buildCommand(strings: TemplateStringsArray, values: unknown[]): string {
-  let result = ""
-  for (let i = 0; i < strings.length; i++) {
-    result += strings[i]
-    if (i < values.length) {
-      result += quote(String(values[i]))
-    }
-  }
-  return result.trim()
+export function isValidTempPath(path: string): boolean {
+  return path.startsWith("/tmp/opencode-dc-")
 }
 
-function quote(value: string): string {
-  if (value === "") {
-    return "''"
-  }
-  if (/^[a-zA-Z0-9_./:@,-]+$/.test(value)) {
-    return value
-  }
-  return `'${value.replace(/'/g, `'\\''`)}'`
+type SpawnOptions = {
+  timeout?: number
+  input?: string
+}
+
+function spawnAsync(command: string, args: string[], options: SpawnOptions = {}): Promise<ShellResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      shell: false,
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: options.timeout,
+    })
+
+    let stdout = ""
+    let stderr = ""
+
+    child.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString("utf8")
+    })
+
+    child.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString("utf8")
+    })
+
+    if (options.input !== undefined) {
+      child.stdin?.write(options.input, "utf8")
+      child.stdin?.end()
+    }
+
+    child.on("error", (error) => {
+      reject(error)
+    })
+
+    child.on("close", (code) => {
+      resolve({ stdout, stderr, exitCode: code ?? 0 })
+    })
+  })
 }

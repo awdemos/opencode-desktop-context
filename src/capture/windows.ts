@@ -1,4 +1,4 @@
-import { $, readTempFile } from "./shell.js"
+import { run, readTempFile } from "./shell.js"
 import type { CaptureAdapter, CaptureResult, CaptureTarget, ActiveWindow } from "./types.js"
 
 async function getActiveWindowInfo(): Promise<ActiveWindow> {
@@ -23,7 +23,7 @@ $processId = 0
 $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
 @($process.ProcessName, $title.ToString()) -join "\n"
 `
-  const result = await $`powershell.exe -NoProfile -Command ${script}`
+  const result = await run("powershell.exe", ["-NoProfile", "-EncodedCommand", encodeBase64Utf16(script)])
   const [appName, title] = result.stdout.trim().split("\n")
   return { appName: appName ?? "", title: title ?? "" }
 }
@@ -73,8 +73,13 @@ if (${activeWindow}) {
 }
 [System.Convert]::ToBase64String([System.IO.File]::ReadAllBytes($path))
 `
-  const result = await $`powershell.exe -NoProfile -Command ${script}`
+  const result = await run("powershell.exe", ["-NoProfile", "-EncodedCommand", encodeBase64Utf16(script)])
   return Buffer.from(result.stdout.trim(), "base64")
+}
+
+function encodeBase64Utf16(input: string): string {
+  const buffer = Buffer.from(input, "utf16le")
+  return buffer.toString("base64")
 }
 
 export const windowsAdapter: CaptureAdapter = {
@@ -89,7 +94,7 @@ export const windowsAdapter: CaptureAdapter = {
   async isAvailable() {
     if (process.platform !== "win32") return false
     try {
-      await $`powershell.exe -NoProfile -Command "exit 0"`
+      await run("powershell.exe", ["-NoProfile", "-Command", "exit 0"])
       return true
     } catch {
       return false

@@ -1,4 +1,4 @@
-import { $, which, readTempFile } from "./shell.js"
+import { run, which, readTempFile, isValidTempPath } from "./shell.js"
 import type { CaptureAdapter, CaptureResult, CaptureTarget, ActiveWindow } from "./types.js"
 
 async function commandExists(cmd: string): Promise<boolean> {
@@ -20,18 +20,18 @@ async function getActiveWindowWayland(): Promise<ActiveWindow> {
   const compositor = await getWaylandCompositor()
   try {
     if (compositor === "hyprland") {
-      const result = await $`hyprctl activewindow -j`
+      const result = await run("hyprctl", ["activewindow", "-j"])
       const json = JSON.parse(result.stdout)
       return { appName: json.class ?? "", title: json.title ?? "" }
     }
     if (compositor === "sway") {
-      const result = await $`swaymsg -t get_tree`
+      const result = await run("swaymsg", ["-t", "get_tree"])
       const json = JSON.parse(result.stdout)
       const focused = findFocused(json)
       return { appName: focused?.app_id ?? "", title: focused?.name ?? "" }
     }
     if (compositor === "niri") {
-      const result = await $`niri msg --json focused-window`
+      const result = await run("niri", ["msg", "--json", "focused-window"])
       const json = JSON.parse(result.stdout)
       return { appName: json.app_id ?? "", title: json.title ?? "" }
     }
@@ -61,13 +61,13 @@ function findFocused(node: any): any {
 
 async function getActiveWindowX11(): Promise<ActiveWindow> {
   try {
-    const id = await $`xprop -root _NET_ACTIVE_WINDOW`
+    const id = await run("xprop", ["-root", "_NET_ACTIVE_WINDOW"])
     const match = id.stdout.match(/0x[0-9a-fA-F]+/)
     if (!match) return { appName: "", title: "" }
     const windowId = match[0]
     const [appName, title] = await Promise.all([
-      $`xprop -id ${windowId} WM_CLASS`.then(r => r.stdout).catch(() => ""),
-      $`xprop -id ${windowId} _NET_WM_NAME`.then(r => r.stdout).catch(() => ""),
+      run("xprop", ["-id", windowId, "WM_CLASS"]).then(r => r.stdout).catch(() => ""),
+      run("xprop", ["-id", windowId, "_NET_WM_NAME"]).then(r => r.stdout).catch(() => ""),
     ])
     return {
       appName: appName.split("").pop()?.replace(/"/g, "").trim() ?? "",
@@ -84,59 +84,74 @@ async function getActiveWindow(): Promise<ActiveWindow> {
   return getActiveWindowX11()
 }
 
+function makeTempFile(): string {
+  return `/tmp/opencode-dc-${Date.now()}.png`
+}
+
+function validateTempFile(path: string): string {
+  if (!isValidTempPath(path)) {
+    throw new Error("Invalid temp file path")
+  }
+  return path
+}
+
 async function captureWayland(target: CaptureTarget): Promise<Buffer> {
-  const tmpFile = `/tmp/opencode-dc-${Date.now()}.png`
+  const tmpFile = validateTempFile(makeTempFile())
   if (target === "activeWindow") {
     const compositor = await getWaylandCompositor()
     if (compositor === "hyprland") {
-      const result = await $`hyprctl activewindow -j`
+      const result = await run("hyprctl", ["activewindow", "-j"])
       const json = JSON.parse(result.stdout)
       const box = `${json.at[0]},${json.at[1]} ${json.size[0]}x${json.size[1]}`
-      await $`grim -g ${box} ${tmpFile}`
+      await run("grim", ["-g", box, tmpFile])
     } else if (compositor === "sway") {
-      const result = await $`swaymsg -t get_tree`
+      const result = await run("swaymsg", ["-t", "get_tree"])
       const json = JSON.parse(result.stdout)
       const focused = findFocused(json)
       if (focused?.rect) {
         const { x, y, width, height } = focused.rect
         const box = `${x},${y} ${width}x${height}`
-        await $`grim -g ${box} ${tmpFile}`
+        await run("grim", ["-g", box, tmpFile])
       } else {
-        await $`grim ${tmpFile}`
+        await run("grim", [tmpFile])
       }
     } else if (compositor === "niri") {
-      const result = await $`niri msg --json focused-window`
+      const result = await run("niri", ["msg", "--json", "focused-window"])
       const json = JSON.parse(result.stdout)
       if (json?.geometry) {
         const { x, y, width, height } = json.geometry
         const box = `${x},${y} ${width}x${height}`
-        await $`grim -g ${box} ${tmpFile}`
+        await run("grim", ["-g", box, tmpFile])
       } else {
-        await $`grim ${tmpFile}`
+        await run("grim", [tmpFile])
       }
     } else {
-      await $`grim ${tmpFile}`
+      await run("grim", [tmpFile])
     }
   } else {
-    await $`grim ${tmpFile}`
+    await run("grim", [tmpFile])
   }
   return readTempFile(tmpFile)
 }
 
 async function captureX11(target: CaptureTarget): Promise<Buffer> {
-  const tmpFile = `/tmp/opencode-dc-${Date.now()}.png`
+  const tmpFile = validateTempFile(makeTempFile())
   if (target === "activeWindow") {
     if (await commandExists("import")) {
-      await $`import -window $(xprop -root _NET_ACTIVE_WINDOW | grep -o '0x[0-9a-fA-F]*') ${tmpFile}`
-      return readTempFile(tmpFile)
+      const id = await run("xprop", ["-root", "_NET_ACTIVE_WINDOW"])
+      const match = id.stdout.match(/0x[0-9a-fA-F]+/)
+      if (match) {
+        await run("import", ["-window", match[0], tmpFile])
+        return readTempFile(tmpFile)
+      }
     }
   }
   if (await commandExists("import")) {
-    await $`import -window root ${tmpFile}`
+    await run("import", ["-window", "root", tmpFile])
     return readTempFile(tmpFile)
   }
   const display = process.env.DISPLAY ?? ":0"
-  await $`ffmpeg -f x11grab -i ${display} -vframes 1 ${tmpFile}`
+  await run("ffmpeg", ["-f", "x11grab", "-i", display, "-vframes", "1", tmpFile])
   return readTempFile(tmpFile)
 }
 

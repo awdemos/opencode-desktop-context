@@ -1,4 +1,4 @@
-import { $, which, readTempFile } from "./shell.js"
+import { run, which, readTempFile, isValidTempPath } from "./shell.js"
 import sharp from "sharp"
 import type { CaptureAdapter, CaptureResult, CaptureTarget, ActiveWindow } from "./types.js"
 
@@ -10,20 +10,31 @@ async function runActiveWindowScript(): Promise<ActiveWindow> {
     end tell
     return frontApp & "\n" & frontWindow
   `
-  const result = await $`osascript -e ${script}`
+  const result = await run("osascript", ["-e", script])
   const [appName, title] = result.stdout.split("\n")
   return { appName: appName ?? "", title: title ?? "" }
 }
 
+function makeTempFile(): string {
+  return `/tmp/opencode-dc-${Date.now()}.png`
+}
+
+function validateTempFile(path: string): string {
+  if (!isValidTempPath(path)) {
+    throw new Error("Invalid temp file path")
+  }
+  return path
+}
+
 async function captureFullScreen(): Promise<Buffer> {
-  const tmpFile = `/tmp/opencode-dc-${Date.now()}.png`
-  await $`screencapture -x ${tmpFile}`
+  const tmpFile = validateTempFile(makeTempFile())
+  await run("screencapture", ["-x", tmpFile])
   return readTempFile(tmpFile)
 }
 
 async function countOnlineDisplays(): Promise<number> {
   try {
-    const result = await $`system_profiler SPDisplaysDataType -json`
+    const result = await run("system_profiler", ["SPDisplaysDataType", "-json"])
     const data = JSON.parse(result.stdout)
     const displays = data?.SPDisplaysDataType?.[0]?.["spdisplays_ndrvs"] ?? []
     return Math.max(1, displays.length)
@@ -35,8 +46,8 @@ async function countOnlineDisplays(): Promise<number> {
 async function captureAllDisplays(): Promise<Buffer> {
   const count = await countOnlineDisplays()
   const base = `/tmp/opencode-dc-${Date.now()}`
-  const files = Array.from({ length: count }, (_, i) => `${base}-${i}.png`)
-  await $`screencapture -x ${files}`
+  const files = Array.from({ length: count }, (_, i) => validateTempFile(`${base}-${i}.png`))
+  await run("screencapture", ["-x", ...files])
 
   if (files.length === 1) {
     return readTempFile(files[0])
@@ -73,8 +84,8 @@ async function captureAllDisplays(): Promise<Buffer> {
 }
 
 async function captureActiveWindow(): Promise<Buffer> {
-  const tmpFile = `/tmp/opencode-dc-${Date.now()}.png`
-  await $`screencapture -x -w ${tmpFile}`
+  const tmpFile = validateTempFile(makeTempFile())
+  await run("screencapture", ["-x", "-w", tmpFile])
   return readTempFile(tmpFile)
 }
 

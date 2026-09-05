@@ -1,21 +1,21 @@
 import { describe, it, expect } from "bun:test"
-import { $, which, readTempFile } from "../src/capture/shell"
+import { run, which, readTempFile } from "../src/capture/shell"
 import { mkdtemp, writeFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 describe("shell", () => {
   it("runs a simple command and returns stdout", async () => {
-    const result = await $`echo hello`
+    const result = await run("echo", ["hello"])
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toBe("hello")
     expect(result.stderr).toBe("")
   })
 
-  it("quotes interpolated values safely", async () => {
-    const value = "hello world"
-    const result = await $`echo ${value}`
-    expect(result.stdout).toBe("hello world")
+  it("does not execute shell metacharacters in arguments", async () => {
+    const result = await run("echo", ["hello;", "world"])
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toBe("hello; world")
   })
 
   it("which finds an existing command", async () => {
