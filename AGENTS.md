@@ -1,6 +1,6 @@
 # opencode-desktop-context Agent Guide
 
-**Project:** OpenCode plugin for capturing desktop screenshots as session context
+**Project:** OpenCode plugin that captures desktop screenshots and adds them to the session context
 **Language:** TypeScript
 **Runtime:** Bun / Node.js (ESM)
 **License:** MIT
@@ -13,33 +13,24 @@ and secure local storage.
 
 ## Repository Layout
 
-| Path | Purpose |
-|------|---------|
-| `src/` | Plugin source |
-| `src/capture/` | Screenshot capture adapters |
-| `src/config.ts` | Configuration loading |
-| `src/hooks/` | OpenCode lifecycle hooks |
-| `src/privacy/` | Permission / privacy controls |
-| `src/storage.ts` | Local image storage |
-| `src/tools/` | OpenCode tool definitions |
-| `src/vision.ts` | Vision-model client |
-| `tests/` | Bun test suite |
-| `dagger/` | Dagger module source |
-| `package.json` | Scripts and dependencies |
-| `tsconfig.json` | TypeScript config |
-| `dagger.json` | Dagger module metadata |
+- `src/index.ts` — Plugin entrypoint.
+- `src/config.ts` — Configuration schema and defaults (zod-validated).
+- `src/storage.ts` — Screenshot persistence helpers.
+- `src/vision.ts` — Vision-model integration (Ollama / Moondream).
+- `src/capture/` — OS-specific screenshot backends (Linux, macOS, Windows) and shell fallback.
+- `src/hooks/` — OpenCode hooks: `chat-message.ts`, `system-hint.ts`.
+- `src/privacy/` — Permission and privacy controls.
+- `src/tools/` — Exposed tools: `capture-desktop`, `describe-desktop`.
+- `dagger/` — Dagger module for build/publish.
+- `tests/` — Regression tests, including the critical `prt-` part-id check.
+- `MEMORY.md` — Project-specific memory: part IDs must start with `prt-`.
 
 ## Build Commands
 
 ```bash
-# Install dependencies
-bun install
-
-# TypeScript type check
-bun run typecheck
-
-# Build distribution
-bun run build
+bun install         # Install dependencies
+bun run build       # tsc compile to dist/
+bun run typecheck   # tsc --noEmit
 ```
 
 ## Test Commands
@@ -48,17 +39,22 @@ bun run build
 bun test
 ```
 
+The test suite includes a regression test that asserts all generated
+desktop-context part IDs match `/^prt-/`. If this fails, OpenCode message
+saving breaks with a schema validation error.
+
 ## Lint / Format
 
 No explicit linter configured; rely on `tsc --noEmit` and consistent style.
 
-## Dagger
+## Dagger / Publish
 
 ```bash
 # List functions
 dagger call --help -m ./
 
-# Publish via Dagger (requires token env vars)
+# Publish to npm (requires NPM_TOKEN)
+export NPM_TOKEN="your-npm-token"
 dagger call -m ./ publish
 ```
 
@@ -66,8 +62,21 @@ dagger call -m ./ publish
 
 - ESM module (`"type": "module"`).
 - Peer dependency on `@opencode-ai/plugin >= 1.14.0`.
+- Screenshot part IDs must use the `prt-` prefix (see `MEMORY.md`).
+- Capture backends are selected by OS; the shell fallback runs `grim`/`screencapture`/`nircmd` as needed.
+- The plugin depends on `sharp` for image resizing/formatting and `zod` for config validation.
 - Privacy blocking is checked before every capture.
 - Vision description uses a configurable base URL (e.g., Ollama + Moondream).
+
+## Common Issues
+
+- **`SchemaError: Expected a string starting with "prt"`**: a part id was
+  generated without the `prt-` prefix; fix in `src/hooks/chat-message.ts` and
+  update `tests/chat-message.test.ts`.
+- **`bun test` fails on capture**: some tests mock the OS backends; missing
+  mocks may mean a new platform path needs a test fixture.
+- **Type errors after plugin SDK bump**: update the `@opencode-ai/plugin`
+  peer range and run `bun run typecheck`.
 
 ## Gotchas
 
@@ -76,3 +85,7 @@ dagger call -m ./ publish
 - The plugin must be installed into OpenCode's plugin list to be active.
 - `prepublishOnly` runs `bun run build`; ensure `dist/` is generated before
   publishing.
+
+## License
+
+MIT. See `LICENSE`.
