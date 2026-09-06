@@ -1,6 +1,6 @@
 import { mkdir, readdir, realpath, rm, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { isAbsolute, join, relative, resolve, normalize } from "node:path"
+import { basename, isAbsolute, join, relative, resolve, normalize } from "node:path"
 import type { StoredCapture } from "./capture/types.js"
 
 export type StorageBackend = "memory" | "temp" | "persistent"
@@ -10,15 +10,38 @@ export type Storage = {
   cleanup(ttlMs: number): Promise<void>
 }
 
-function isWithinUserHome(dir: string): boolean {
+async function isWithinUserHome(dir: string): Promise<boolean> {
   if (!isAbsolute(dir)) return false
-  const home = homedir()
-  const rel = relative(resolve(normalize(home)), resolve(normalize(dir)))
+  const home = resolve(normalize(await realpathSafe(homedir())))
+  const rel = relative(home, resolve(normalize(dir)))
   return !rel.startsWith("..") && !isAbsolute(rel)
 }
 
 function hasDotDotSegments(input: string): boolean {
   return normalize(input) !== resolve(input) || input.split(/[\\/]/).some((segment) => segment === "..")
+}
+
+async function resolveInputPath(input: string): Promise<string> {
+  const { access, realpath } = await import("node:fs/promises")
+  let prefix = resolve(normalize(input))
+  let suffix = ""
+  // Walk up until we find an existing prefix, then realpath it and append the non-existing suffix.
+  while (prefix !== resolve(prefix, "..") && !(await exists(prefix))) {
+    suffix = join(basename(prefix), suffix)
+    prefix = resolve(prefix, "..")
+  }
+  const resolvedPrefix = await realpathSafe(prefix)
+  return suffix ? resolve(normalize(join(resolvedPrefix, suffix))) : resolve(normalize(resolvedPrefix))
+}
+
+async function exists(path: string): Promise<boolean> {
+  const { access } = await import("node:fs/promises")
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function validatePersistentDir(directory: string): Promise<void> {
@@ -28,13 +51,13 @@ export async function validatePersistentDir(directory: string): Promise<void> {
   if (hasDotDotSegments(directory)) {
     throw new Error("persistentDir must not contain '..' segments")
   }
-  const resolved = resolve(normalize(await realpathSafe(directory)))
-  const home = resolve(normalize(homedir()))
-  if (isWithin(resolved, home)) {
+  const resolved = await resolveInputPath(directory)
+  const home = resolve(normalize(await realpathSafe(homedir())))
+  if (await isWithinUserHome(resolved)) {
     return
   }
   const workspaceRoot = getWorkspaceRoot()
-  if (workspaceRoot && isWithin(resolved, workspaceRoot)) {
+  if (workspaceRoot && (await isWithin(resolved, workspaceRoot))) {
     return
   }
   throw new Error("persistentDir must be within the user home directory or an explicit workspace root")
@@ -48,8 +71,8 @@ async function realpathSafe(dir: string): Promise<string> {
   }
 }
 
-function isWithin(child: string, parent: string): boolean {
-  const rel = relative(resolve(normalize(parent)), resolve(normalize(child)))
+async function isWithin(child: string, parent: string): Promise<boolean> {
+  const rel = relative(resolve(normalize(await realpathSafe(parent))), resolve(normalize(child)))
   return !rel.startsWith("..") && !isAbsolute(rel)
 }
 
